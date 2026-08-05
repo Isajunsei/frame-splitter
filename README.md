@@ -58,6 +58,23 @@ const UPSCALE_WEIGHT = 1.5;   // 上げるほど元のサイズを保とうと�
 
 ---
 
+## ファビコンを変える
+
+`icons` フォルダに3案が入っています。いま使っているのは候補B（青地）です。
+
+```
+icons/favicon.svg              いま使っているもの
+icons/favicon-候補A-白地.svg    白い角丸に青系のブロック
+icons/favicon-候補B-青地.svg    濃い青に白いブロック。小さくしても見分けが付きます
+icons/favicon-候補C-3色.svg     青・橙・緑・紺の4ブロック
+icons/見比べ.png                3案を並べたシート
+```
+
+気分で変えるときは、使いたい候補を **`favicon.svg` という名前で上書きコピー**します。
+`index.html` は `icons/favicon.svg` を読むだけなので、他に直すところはありません。
+
+---
+
 ## 共有
 
 `index.html` を GitHub Pages に置けば、URL を渡すだけで誰でも使えます。
