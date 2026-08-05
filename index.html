@@ -56,7 +56,7 @@ label.lb{display:block;font-size:13px;font-weight:600;margin-bottom:8px}
 <body>
 <div class="wrap">
   <h1>Frame Splitter</h1>
-  <p class="sub">画像を原寸のまま、余白が最小になるように1枚へまとめます。</p>
+  <p class="sub">画像を余白なしで1枚へまとめます。幅をそろえて段に組み、縮小はしません。</p>
 
   <div class="card">
     <div class="drop" id="drop">
@@ -87,123 +87,106 @@ label.lb{display:block;font-size:13px;font-weight:600;margin-bottom:8px}
 /* ============================================================
    設定
    ============================================================ */
-const MAX_SIDE      = 16000;  // キャンバスの一辺の上限（ブラウザ制限）
-const ASPECT_TARGET = 1.3;    // 目指す縦横比。1 より大きいほど横長寄りを選ぶ
-const ASPECT_WEIGHT = 0.30;   // 縦横比の偏りに対する減点。上げるほど形を優先、下げるほど余白ゼロを優先
-const MAX_CANDIDATES = 6;     // 「別の並びにする」で回せる候補の数
+const MAX_SIDE       = 16000;  // キャンバスの一辺の上限（ブラウザ制限）
+const ASPECT_TARGET  = 1.3;    // 目指す縦横比。1 より大きいほど横長寄りを選ぶ
+const ASPECT_WEIGHT  = 0.30;   // 縦横比の偏りに対する減点。上げるほど形を優先する
+const UPSCALE_WEIGHT = 1.5;    // 拡大に対する減点。上げるほど元のサイズを保とうとする
+const MAX_CANDIDATES = 6;      // 「別の並びにする」で回せる候補の数
 
 /* ============================================================
-   詰め込み（原寸維持・回転なし・余白最小）
-   候補となるキャンバス幅を総当たりし、MaxRects で詰めて
-   評価値の高い順に候補を返す。
-   評価値 = 充填率 − 縦横比のずれ × ASPECT_WEIGHT
+   並べ方（幅そろえ・段組み）
+
+   画像を何段かに分け、同じ段の画像は高さをそろえ、各段の合計幅を
+   キャンバス幅にぴったり合わせます。この作り方なら余白は常にゼロです。
+
+   縮小はしません。段の高さは、その段で一番背の高い元画像に合わせるので、
+   どの画像も元のサイズ以上になります。小さい画像は拡大して幅をそろえます。
+
+   分け方をすべて試し、次の式で採点して良い順に候補を残します。
+     点数 ＝ −（縦横比のずれ × ASPECT_WEIGHT）−（拡大の大きさ × UPSCALE_WEIGHT）
    ============================================================ */
 function packCandidates(items){
-  const widths = candidateWidths(items);
-  const orders = [
-    [...items].sort((a,b)=> b.h*b.w - a.h*a.w),
-    [...items].sort((a,b)=> b.h - a.h || b.w - a.w),
-    [...items].sort((a,b)=> b.w - a.w || b.h - a.h),
-    [...items].sort((a,b)=> Math.max(b.w,b.h) - Math.max(a.w,a.h)),
-  ];
-  const used = items.reduce((s,i)=> s + i.w*i.h, 0);
+  const n = items.length;
+  const groups = n <= 9 ? allPartitions(n) : rowSplits(n);
   const bySize = new Map();
-  for(const W of widths){
-    for(const ord of orders){
-      const r = packInto(ord, W);
-      if(!r) continue;
-      if(r.h > MAX_SIDE || W > MAX_SIDE) continue;
-      const fill = used / (W * r.h);
-      const score = fill - ASPECT_WEIGHT * Math.abs(Math.log((W / r.h) / ASPECT_TARGET));
-      const key = W + "x" + r.h;
-      const prev = bySize.get(key);
-      if(!prev || score > prev.score) bySize.set(key, {score, fill, W, H:r.h, placed:r.placed});
-    }
+  for(const g of groups){
+    const L = layoutFor(items, g);
+    if(!L) continue;
+    L.score = -ASPECT_WEIGHT * Math.abs(Math.log((L.W / L.H) / ASPECT_TARGET))
+              -UPSCALE_WEIGHT * L.up;
+    const key = L.W + "x" + L.H;
+    const prev = bySize.get(key);
+    if(!prev || L.score > prev.score) bySize.set(key, L);
   }
   return [...bySize.values()].sort((a,b)=> b.score - a.score).slice(0, MAX_CANDIDATES);
 }
 
-function candidateWidths(items){
-  const ws = items.map(i=>i.w);
-  const set = new Set(ws);
-  // 幅の組み合わせ和（画像がぴったり並ぶ幅は必ずここに含まれる）
-  if(items.length <= 12){
-    let sums = new Set([0]);
-    for(const w of ws){
-      const next = new Set(sums);
-      for(const s of sums) next.add(s + w);
-      sums = next;
+// 段の分け方をすべて列挙する（どの画像がどの段か。段の順序は結果に影響しない）
+function allPartitions(n){
+  const out = [], a = new Array(n);
+  (function go(i, k){
+    if(i === n){
+      const g = [];
+      for(let j=0;j<k;j++) g.push([]);
+      for(let j=0;j<n;j++) g[a[j]].push(j);
+      out.push(g);
+      return;
     }
-    for(const s of sums) if(s > 0) set.add(s);
-  } else {
-    let acc = 0;
-    for(const w of ws){ acc += w; set.add(acc); }
-  }
-  const minW = Math.max(...ws);
-  return [...set].filter(w => w >= minW && w <= MAX_SIDE).sort((a,b)=>a-b);
+    for(let b=0;b<=k;b++){ a[i]=b; go(i+1, Math.max(k, b+1)); }
+  })(0, 0);
+  return out;
 }
 
-// MaxRects (Best Short Side Fit)。高さは無制限。
-function packInto(items, W){
-  const BIG = 1e7;
-  let free = [{x:0,y:0,w:W,h:BIG}];
+// 枚数が多いときは、順番に区切るだけにする（総当たりだと数が多すぎるため）
+function rowSplits(n){
+  const out = [];
+  for(let rows=1; rows<=n; rows++){
+    const g = [];
+    for(let i=0;i<rows;i++) g.push([]);
+    for(let i=0;i<n;i++) g[Math.floor(i*rows/n)].push(i);
+    out.push(g);
+  }
+  return out;
+}
+
+function layoutFor(items, groups){
+  let W = 0;
+  const rows = groups.map(g=>{
+    const imgs = g.map(i=>items[i]);
+    const sumA = imgs.reduce((s,it)=> s + it.w/it.h, 0);
+    const need = Math.max(...imgs.map(it=>it.h)) * sumA;   // 縮小させないための最低幅
+    if(need > W) W = need;
+    return {imgs, sumA};
+  });
+  W = Math.round(W);
   const placed = [];
-  let maxY = 0;
-  for(const it of items){
-    let bi=-1, bs1=Infinity, bs2=Infinity, bx=0, by=0;
-    for(let i=0;i<free.length;i++){
-      const f = free[i];
-      if(it.w > f.w || it.h > f.h) continue;
-      const l = f.w - it.w, s = f.h - it.h;
-      const s1 = Math.min(l,s), s2 = Math.max(l,s);
-      if(s1 < bs1 || (s1===bs1 && s2 < bs2) || (s1===bs1 && s2===bs2 && f.y < by)){
-        bi=i; bs1=s1; bs2=s2; bx=f.x; by=f.y;
-      }
-    }
-    if(bi < 0) return null;
-    const rect = {x:bx, y:by, w:it.w, h:it.h, src:it};
-    placed.push(rect);
-    maxY = Math.max(maxY, by + it.h);
-    const next = [];
-    for(const f of free){
-      if(rect.x >= f.x+f.w || rect.x+rect.w <= f.x || rect.y >= f.y+f.h || rect.y+rect.h <= f.y){
-        next.push(f); continue;
-      }
-      if(rect.x > f.x)            next.push({x:f.x, y:f.y, w:rect.x-f.x, h:f.h});
-      if(rect.x+rect.w < f.x+f.w) next.push({x:rect.x+rect.w, y:f.y, w:f.x+f.w-(rect.x+rect.w), h:f.h});
-      if(rect.y > f.y)            next.push({x:f.x, y:f.y, w:f.w, h:rect.y-f.y});
-      if(rect.y+rect.h < f.y+f.h) next.push({x:f.x, y:rect.y+rect.h, w:f.w, h:f.y+f.h-(rect.y+rect.h)});
-    }
-    free = prune(next);
+  let y = 0, lnScale = 0, maxScale = 1;
+  for(const r of rows){
+    const h = W / r.sumA;
+    let x = 0;
+    r.imgs.forEach((it, k)=>{
+      const w = (k === r.imgs.length - 1) ? (W - x) : Math.round(h * it.w / it.h);
+      placed.push({x, y: Math.round(y), w, h: Math.round(h), src: it});
+      const sc = h / it.h;
+      lnScale += Math.log(Math.max(1, sc));
+      if(sc > maxScale) maxScale = sc;
+      x += w;
+    });
+    y += h;
   }
-  return {h:maxY, placed};
+  const H = Math.round(y);
+  if(W > MAX_SIDE || H > MAX_SIDE || W < 1 || H < 1) return null;
+  return {W, H, placed, up: lnScale / items.length, maxScale};
 }
 
-function prune(list){
-  const out = list.filter(f => f.w > 0 && f.h > 0);
-  const keep = [];
-  for(let i=0;i<out.length;i++){
-    let contained = false;
-    for(let j=0;j<out.length;j++){
-      if(i===j) continue;
-      const a=out[i], b=out[j];
-      if(a.x>=b.x && a.y>=b.y && a.x+a.w<=b.x+b.w && a.y+a.h<=b.y+b.h){
-        if(a.x===b.x && a.y===b.y && a.w===b.w && a.h===b.h && j>i) continue;
-        contained = true; break;
-      }
-    }
-    if(!contained) keep.push(out[i]);
-  }
-  return keep;
-}
-
-// 原寸のまま描画（余りは透明のまま）
+// 描画。拡大が入るので、なめらかに引き伸ばす設定にする。
 function drawLayout(c){
   const cv = document.createElement("canvas");
   cv.width = c.W; cv.height = c.H;
   const cx = cv.getContext("2d");
-  cx.imageSmoothingEnabled = false;
-  for(const r of c.placed) cx.drawImage(r.src.im, r.x, r.y);
+  cx.imageSmoothingEnabled = true;
+  cx.imageSmoothingQuality = "high";
+  for(const r of c.placed) cx.drawImage(r.src.im, r.x, r.y, r.w, r.h);
   return cv;
 }
 
@@ -296,7 +279,8 @@ function showLayout(){
   merged = drawLayout(c);
   $("resultImg").src = merged.toDataURL("image/png");
   $("resultInfo").textContent =
-    `${c.W} × ${c.H} px　／　余白 ${((1-c.fill)*100).toFixed(1)}%`
+    `${c.W} × ${c.H} px`
+    + (c.maxScale > 1.01 ? `　／　小さい画像を最大 ${c.maxScale.toFixed(2)} 倍に拡大` : "　／　全て原寸")
     + (layouts.length > 1 ? `　／　候補 ${layoutIdx+1} / ${layouts.length}` : "");
   $("alt").classList.toggle("hide", layouts.length < 2);
   $("resultCard").classList.remove("hide");
