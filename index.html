@@ -20,7 +20,7 @@ h1{font-size:22px;margin:0 0 4px;letter-spacing:.02em}
 .sub{color:var(--dim);font-size:13px;margin:0 0 22px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
   box-shadow:var(--sh);padding:20px;margin-bottom:16px}
-.drop{border:2px dashed #c7cdd6;border-radius:var(--r);padding:82px 20px;text-align:center;
+.drop{border:2px dashed #c7cdd6;border-radius:var(--r);padding:150px 20px;text-align:center;
   cursor:pointer;transition:.15s;background:var(--panel2)}
 .drop:hover,.drop.over{border-color:var(--accent);background:#eef4ff}
 .drop .big{font-size:16px;margin-bottom:8px}
@@ -89,8 +89,8 @@ label.lb{display:block;font-size:13px;font-weight:600;margin-bottom:8px}
    設定
    ============================================================ */
 const MAX_SIDE       = 16000;  // キャンバスの一辺の上限（ブラウザ制限）
-const ASPECT_TARGET  = 1.3;    // 目指す縦横比。1 より大きいほど横長寄りを選ぶ
-const ASPECT_WEIGHT  = 0.30;   // 縦横比の偏りに対する減点。上げるほど形を優先する
+const ASPECT_TARGET  = 1.15;   // 目指す縦横比。1 が正方形。少しだけ横長寄りにしている
+const ASPECT_WEIGHT  = 1.00;   // 正方形からの遠さに対する減点。上げるほど正方形寄りを先に出す
 const UPSCALE_WEIGHT = 1.5;    // 拡大に対する減点。上げるほど元のサイズを保とうとする
 const MAX_CANDIDATES = 6;      // 「別の並びにする」で回せる候補の数
 
@@ -104,7 +104,8 @@ const MAX_CANDIDATES = 6;      // 「別の並びにする」で回せる候補�
    どの画像も元のサイズ以上になります。小さい画像は拡大して幅をそろえます。
 
    分け方をすべて試し、次の式で採点して良い順に候補を残します。
-     点数 ＝ −（縦横比のずれ × ASPECT_WEIGHT）−（拡大の大きさ × UPSCALE_WEIGHT）
+     点数 ＝ −（正方形からの遠さ × ASPECT_WEIGHT）−（拡大の大きさ × UPSCALE_WEIGHT）
+   正方形に近いものほど先に出ます。
    ============================================================ */
 function packCandidates(items){
   const n = items.length;
@@ -113,7 +114,7 @@ function packCandidates(items){
   for(const g of groups){
     const L = layoutFor(items, g);
     if(!L) continue;
-    L.score = -ASPECT_WEIGHT * Math.abs(Math.log((L.W / L.H) / ASPECT_TARGET))
+      L.score = -ASPECT_WEIGHT * Math.abs(Math.log((L.W / L.H) / ASPECT_TARGET))
               -UPSCALE_WEIGHT * L.up;
     const key = L.W + "x" + L.H;
     const prev = bySize.get(key);
