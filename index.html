@@ -18,17 +18,19 @@
 html{scrollbar-gutter:stable;overflow-y:scroll}
 body{margin:0;background:var(--bg);color:var(--fg);
   font-family:"Segoe UI","Yu Gothic UI",-apple-system,sans-serif;font-size:14px;line-height:1.7}
-.wrap{max-width:1080px;margin:0 auto;padding:30px 20px 130px}
+.wrap{max-width:1080px;margin:0 auto;padding:30px 20px 30px}
 h1{font-size:22px;margin:0 0 4px;letter-spacing:.02em}
 .sub{color:var(--dim);font-size:13px;margin:0 0 22px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
   box-shadow:var(--sh);padding:20px;margin-bottom:16px}
-.drop{border:2px dashed #c7cdd6;border-radius:var(--r);padding:242px 20px;text-align:center;
-  cursor:pointer;transition:.15s;background:var(--panel2)}
+.drop{border:2px dashed #c7cdd6;border-radius:var(--r);padding:20px;text-align:center;
+  cursor:pointer;transition:.15s;background:var(--panel2);
+  height:calc(100vh - 176px);display:flex;flex-direction:column;
+  align-items:center;justify-content:center}
 .drop:hover,.drop.over{border-color:var(--accent);background:#eef4ff}
 .drop .big{font-size:16px;margin-bottom:8px}
 .drop .small{color:var(--dim);font-size:12px}
-.drop.compact{padding:72px 20px}
+.drop.compact{height:auto;padding:72px 20px;display:block}
 .drop.compact .big{font-size:14px;margin-bottom:4px}
 .thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:16px}
 .thumb{position:relative;background:var(--panel2);border:1px solid var(--line);
@@ -55,15 +57,19 @@ label.lb{display:block;font-size:13px;font-weight:600;margin-bottom:8px}
   background:repeating-conic-gradient(#eef0f3 0 25%, #fff 0 50%) 0 0/16px 16px}
 .preview img{max-width:100%;max-height:calc(100vh - 210px);display:block;border-radius:6px}
 .info{color:var(--dim);font-size:12px;margin-top:10px}
+#resultCard{margin-bottom:120px;cursor:pointer}
 #resultActions{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:20;
   margin:0;padding:10px 12px;background:rgba(255,255,255,.95);backdrop-filter:blur(8px);
   border:1px solid var(--line);border-radius:14px;
   box-shadow:0 6px 24px rgba(16,24,40,.14);flex-wrap:nowrap}
 .err{color:var(--danger);font-size:13px;margin-top:10px}
+body.empty .wrap{padding-bottom:14px}
+body.empty .card{margin-bottom:0}
+body.empty .thumbs{margin-top:0}
 .hide{display:none!important}
 </style>
 </head>
-<body>
+<body class="empty">
 <div class="wrap">
   <h1>Frame Splitter</h1>
   <p class="sub">画像を余白なしで1枚へまとめます。幅をそろえて段に組み、縮小はしません。</p>
@@ -271,10 +277,19 @@ function refresh(){
   });
   $("mergeActions").style.display = S.imgs.length ? "flex" : "none";
   $("drop").classList.toggle("compact", S.imgs.length > 0);
+  document.body.classList.toggle("empty", S.imgs.length === 0);
   merge();
 }
 
 $("clear").onclick = ()=>{ S.imgs = []; refresh(); };
+
+// 結果カードの白い部分（画像そのもの以外）をクリックしたら、はじめの状態に戻す
+$("resultCard").onclick = e=>{
+  if(e.target.closest("#resultActions") || e.target.closest(".checker")) return;
+  S.imgs = [];
+  refresh();
+  window.scrollTo(0, 0);
+};
 
 let layouts = [], layoutIdx = 0, merged = null;
 
