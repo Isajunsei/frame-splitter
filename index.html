@@ -25,7 +25,7 @@ h1{font-size:22px;margin:0 0 4px;letter-spacing:.02em}
   box-shadow:var(--sh);padding:20px;margin-bottom:16px}
 .drop{border:2px dashed #c7cdd6;border-radius:var(--r);padding:20px;text-align:center;
   cursor:pointer;transition:.15s;background:var(--panel2);
-  height:calc(100vh - 176px);display:flex;flex-direction:column;
+  height:calc(100vh - 272px);display:flex;flex-direction:column;
   align-items:center;justify-content:center}
 .drop:hover,.drop.over{border-color:var(--accent);background:#eef4ff}
 .drop .big{font-size:16px;margin-bottom:8px}
@@ -298,13 +298,19 @@ function merge(){
   layouts = buildLayouts(S.imgs.map(o=>o.im));
   layoutIdx = 0;
   if(!layouts.length){ showErr("mergeErr","この組み合わせは大きすぎて1枚にできませんでした。"); return; }
-  showLayout();
+  showLayout(true);
 }
 
-function showLayout(){
+function showLayout(scrollToImage){
   const c = layouts[layoutIdx];
   merged = drawLayout(c);
-  $("resultImg").src = merged.toDataURL("image/png");
+  const img = $("resultImg");
+  if(scrollToImage) img.onload = ()=>{
+    const r = $("resultCard").querySelector(".checker").getBoundingClientRect();
+    window.scrollBy(0, r.top - 20);
+  };
+  else img.onload = null;
+  img.src = merged.toDataURL("image/png");
   $("resultInfo").textContent =
     `${c.W} × ${c.H} px`
     + (c.maxScale > 1.01 ? `　／　小さい画像を最大 ${c.maxScale.toFixed(2)} 倍に拡大` : "　／　全て原寸")
@@ -313,7 +319,7 @@ function showLayout(){
   $("resultCard").classList.remove("hide");
 }
 
-$("alt").onclick = ()=>{ layoutIdx = (layoutIdx + 1) % layouts.length; showLayout(); };
+$("alt").onclick = ()=>{ layoutIdx = (layoutIdx + 1) % layouts.length; showLayout(false); };
 $("dl").onclick  = ()=> merged && saveCanvas(merged, "merged");
 
 function showErr(id, msg){ const e=$(id); e.textContent=msg; e.classList.remove("hide"); }
