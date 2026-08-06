@@ -25,6 +25,8 @@ h1{font-size:22px;margin:0 0 4px;letter-spacing:.02em}
 .drop:hover,.drop.over{border-color:var(--accent);background:#eef4ff}
 .drop .big{font-size:16px;margin-bottom:8px}
 .drop .small{color:var(--dim);font-size:12px}
+.drop.compact{padding:22px 20px}
+.drop.compact .big{font-size:14px;margin-bottom:4px}
 .thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:16px}
 .thumb{position:relative;background:var(--panel2);border:1px solid var(--line);
   border-radius:10px;padding:8px}
@@ -48,8 +50,11 @@ label.lb{display:block;font-size:13px;font-weight:600;margin-bottom:8px}
 .preview{text-align:center}
 .checker{display:inline-block;border-radius:10px;border:1px solid var(--line);padding:6px;
   background:repeating-conic-gradient(#eef0f3 0 25%, #fff 0 50%) 0 0/16px 16px}
-.preview img{max-width:100%;max-height:520px;display:block;border-radius:6px}
+.preview img{max-width:100%;max-height:min(520px,52vh);display:block;border-radius:6px}
 .info{color:var(--dim);font-size:12px;margin-top:10px}
+.actions{position:sticky;top:10px;z-index:5;display:flex;gap:10px;justify-content:center;
+  margin-bottom:14px;padding:10px;background:rgba(255,255,255,.94);
+  border:1px solid var(--line);border-radius:12px;box-shadow:var(--sh)}
 .err{color:var(--danger);font-size:13px;margin-top:10px}
 .hide{display:none!important}
 </style>
@@ -74,12 +79,12 @@ label.lb{display:block;font-size:13px;font-weight:600;margin-bottom:8px}
 
   <div class="card hide" id="resultCard">
     <div class="preview">
-      <div class="checker"><img id="resultImg" alt=""></div>
-      <div class="info" id="resultInfo"></div>
-      <div class="row" style="justify-content:center;margin-top:14px">
+      <div class="actions">
         <button class="btn" id="dl">ダウンロード</button>
         <button class="btn ghost hide" id="alt">別の並びにする</button>
       </div>
+      <div class="info" id="resultInfo" style="margin:0 0 12px"></div>
+      <div class="checker"><img id="resultImg" alt=""></div>
     </div>
   </div>
 </div>
@@ -114,7 +119,7 @@ function packCandidates(items){
   for(const g of groups){
     const L = layoutFor(items, g);
     if(!L) continue;
-      L.score = -ASPECT_WEIGHT * Math.abs(Math.log((L.W / L.H) / ASPECT_TARGET))
+    L.score = -ASPECT_WEIGHT * Math.abs(Math.log((L.W / L.H) / ASPECT_TARGET))
               -UPSCALE_WEIGHT * L.up;
     const key = L.W + "x" + L.H;
     const prev = bySize.get(key);
@@ -261,6 +266,7 @@ function refresh(){
     t.appendChild(d);
   });
   $("mergeActions").style.display = S.imgs.length ? "flex" : "none";
+  $("drop").classList.toggle("compact", S.imgs.length > 0);
   merge();
 }
 
