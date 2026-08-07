@@ -60,6 +60,16 @@ label.lb{display:block;font-size:13px;font-weight:600;margin-bottom:8px}
   cursor:grab;user-select:none;-webkit-user-drag:none;touch-action:none}
 .preview img.dragging{cursor:grabbing}
 #slotOverlay{position:absolute;left:6px;top:6px;pointer-events:none;border-radius:6px}
+/* エクスプローラー風：ドラッグ中にカーソルへ追従する小サムネ */
+#dragGhost{
+  position:fixed;z-index:100;pointer-events:none;
+  width:108px;height:108px;padding:5px;box-sizing:border-box;
+  background:#fff;border:1px solid #c7cdd6;border-radius:8px;
+  box-shadow:0 10px 28px rgba(16,24,40,.2);
+  opacity:.96;
+}
+#dragGhost canvas{width:100%;height:100%;display:block;border-radius:4px;background:#f4f5f7}
+body.is-slot-dragging,body.is-slot-dragging *{cursor:grabbing!important}
 .info{color:var(--dim);font-size:12px;margin-top:10px}
 #resultCard{margin-bottom:120px;cursor:pointer}
 #resultActions{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:20;
@@ -106,7 +116,9 @@ body.empty .thumbs{margin-top:0}
     </div>
   </div>
 
-<script>
+  <div id="dragGhost" class="hide" aria-hidden="true"><canvas width="196" height="196"></canvas></div>
+
+  <script>
 /* ============================================================
    設定
    ============================================================ */
@@ -433,6 +445,12 @@ function paintOverlay(){
   if(r.width < 1) return;
   const sx = ov.width / c.W;
   const sy = ov.height / c.H;
+  // 元枠を少し薄く（掴んで持ち上げた感じ）
+  if(dragFrom >= 0){
+    const p = c.placed[dragFrom];
+    ctx.fillStyle = "rgba(255,255,255,.45)";
+    ctx.fillRect(p.x * sx, p.y * sy, p.w * sx, p.h * sy);
+  }
   const stroke = (idx, color, width)=>{
     if(idx < 0) return;
     const p = c.placed[idx];
@@ -442,6 +460,54 @@ function paintOverlay(){
   };
   stroke(dragFrom, "rgba(37,99,235,.95)", 3);
   if(dragOver >= 0 && dragOver !== dragFrom) stroke(dragOver, "rgba(16,185,129,.95)", 3);
+}
+
+function fillGhostThumb(slotIdx){
+  const ghost = $("dragGhost");
+  const cv = ghost.querySelector("canvas");
+  const ctx = cv.getContext("2d");
+  const size = cv.width;
+  ctx.clearRect(0, 0, size, size);
+  ctx.fillStyle = "#f4f5f7";
+  ctx.fillRect(0, 0, size, size);
+  if(!layouts.length || slotIdx < 0) return;
+  const c = layouts[layoutIdx];
+  const n = c.placed.length;
+  if(!slotMap || slotMap.length !== n) resetSlotMap(n);
+  const src = c.placed[slotMap[slotIdx]].src.im;
+  // cover で正方形サムネに
+  const iw = src.naturalWidth || src.width;
+  const ih = src.naturalHeight || src.height;
+  if(iw < 1 || ih < 1) return;
+  const scale = Math.max(size / iw, size / ih);
+  const sw = size / scale;
+  const sh = size / scale;
+  const sx = (iw - sw) / 2;
+  const sy = (ih - sh) / 2;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(src, sx, sy, sw, sh, 0, 0, size, size);
+}
+
+function moveDragGhost(clientX, clientY){
+  const ghost = $("dragGhost");
+  // エクスプローラー同様、カーソル右下に少しずらす
+  const x = clientX + 14;
+  const y = clientY + 14;
+  ghost.style.left = x + "px";
+  ghost.style.top = y + "px";
+}
+
+function showDragGhost(slotIdx, clientX, clientY){
+  fillGhostThumb(slotIdx);
+  moveDragGhost(clientX, clientY);
+  $("dragGhost").classList.remove("hide");
+  document.body.classList.add("is-slot-dragging");
+}
+
+function hideDragGhost(){
+  $("dragGhost").classList.add("hide");
+  document.body.classList.remove("is-slot-dragging");
 }
 
 (function bindSlotDrag(){
@@ -462,11 +528,13 @@ function paintOverlay(){
     dragOver = idx;
     img.classList.add("dragging");
     try{ img.setPointerCapture(e.pointerId); }catch(_){}
+    showDragGhost(idx, e.clientX, e.clientY);
     paintOverlay();
   });
 
   img.addEventListener("pointermove", e=>{
     if(dragFrom < 0 || !layouts.length) return;
+    moveDragGhost(e.clientX, e.clientY);
     const c = layouts[layoutIdx];
     const pt = canvasPointFromEvent(img, e, c.W, c.H);
     const idx = pt ? hitSlot(c.placed, pt.x, pt.y) : -1;
@@ -488,6 +556,7 @@ function paintOverlay(){
     dragFrom = -1;
     dragOver = -1;
     img.classList.remove("dragging");
+    hideDragGhost();
     clearOverlay();
     if(to >= 0 && to !== from && layouts.length){
       const n = layouts[layoutIdx].placed.length;
