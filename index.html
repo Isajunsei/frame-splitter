@@ -208,20 +208,21 @@ function clockwiseSlotOrder(placed, W, H){
   }).sort((a, b)=> a.angle - b.angle || a.i - b.i).map(o=> o.i);
 }
 
-// 拡大縮小なし。1px=1px のまま中央基準で枠に収め、はみ出しは外側からカット
-function drawCenterCrop(ctx, im, dx, dy, dw, dh){
+// 枠を余白ゼロで埋める（cover）。アスペクトは保ち、足りない辺に合わせて拡大/縮小し、
+// はみ出す辺は中央基準で外側からカットする。
+function drawCover(ctx, im, dx, dy, dw, dh){
   const iw = im.naturalWidth || im.width;
   const ih = im.naturalHeight || im.height;
-  const sw = Math.min(iw, dw);
-  const sh = Math.min(ih, dh);
-  const sx = Math.floor((iw - sw) / 2);
-  const sy = Math.floor((ih - sh) / 2);
-  const ddx = dx + Math.floor((dw - sw) / 2);
-  const ddy = dy + Math.floor((dh - sh) / 2);
-  ctx.drawImage(im, sx, sy, sw, sh, ddx, ddy, sw, sh);
+  if(iw < 1 || ih < 1 || dw < 1 || dh < 1) return;
+  const scale = Math.max(dw / iw, dh / ih);
+  const sw = dw / scale;
+  const sh = dh / scale;
+  const sx = (iw - sw) / 2;
+  const sy = (ih - sh) / 2;
+  ctx.drawImage(im, sx, sy, sw, sh, dx, dy, dw, dh);
 }
 
-// 描画。rot=0 は従来どおり枠に合わせて描く。rot>0 は枠固定のまま中身を時計回りに回し、中央クロップ。
+// 描画。rot=0 は従来どおり枠に合わせて描く。rot>0 は枠固定のまま中身を時計回りに回し、cover で余白なし。
 function drawLayout(c, rot){
   const cv = document.createElement("canvas");
   cv.width = c.W; cv.height = c.H;
@@ -245,10 +246,11 @@ function drawLayout(c, rot){
     const srcIdx = order[(j - r + n) % n];
     srcs[destIdx] = placed[srcIdx].src;
   }
-  cx.imageSmoothingEnabled = false;
+  cx.imageSmoothingEnabled = true;
+  cx.imageSmoothingQuality = "high";
   for(let i=0; i<n; i++){
     const p = placed[i];
-    drawCenterCrop(cx, srcs[i].im, p.x, p.y, p.w, p.h);
+    drawCover(cx, srcs[i].im, p.x, p.y, p.w, p.h);
   }
   return cv;
 }
@@ -363,8 +365,8 @@ function showLayout(scrollToImage){
   $("resultInfo").textContent =
     `${c.W} × ${c.H} px`
     + (rotStep
-        ? `　／　枠固定・配置ローテ ${rotStep}/${n}（中央クロップ）`
-        : (c.maxScale > 1.01 ? `　／　小さい画像を最大 ${c.maxScale.toFixed(2)} 倍に拡大` : "　／　全て原寸"))
+            ? `　／　枠固定・配置ローテ ${rotStep}/${n}（余白なし・中央クロップ）`
+            : (c.maxScale > 1.01 ? `　／　小さい画像を最大 ${c.maxScale.toFixed(2)} 倍に拡大` : "　／　全て原寸"))
     + (layouts.length > 1 ? `　／　候補 ${layoutIdx+1} / ${layouts.length}` : "");
   $("alt").classList.toggle("hide", layouts.length < 2);
   $("resultCard").classList.remove("hide");
