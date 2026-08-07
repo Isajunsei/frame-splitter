@@ -54,8 +54,8 @@ textarea{resize:vertical;min-height:62px}
 label.lb{display:block;font-size:13px;font-weight:600;margin-bottom:8px}
 .preview{text-align:center}
 .checker{display:inline-block;border-radius:10px;border:1px solid var(--line);padding:6px;
-  background:repeating-conic-gradient(#eef0f3 0 25%, #fff 0 50%) 0 0/16px 16px}
-.preview img{max-width:100%;max-height:calc(100vh - 210px);display:block;border-radius:6px}
+  background:repeating-conic-gradient(#eef0f3 0 25%, #fff 0 50%) 0 0/16px 16px;cursor:pointer}
+.preview img{max-width:100%;max-height:calc(100vh - 210px);display:block;border-radius:6px;cursor:pointer}
 .info{color:var(--dim);font-size:12px;margin-top:10px}
 #resultCard{margin-bottom:120px;cursor:pointer}
 #resultActions{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:20;
@@ -196,14 +196,60 @@ function layoutFor(items, groups){
   return {W, H, placed, up: lnScale / items.length, maxScale};
 }
 
-// 描画。拡大が入るので、なめらかに引き伸ばす設定にする。
-function drawLayout(c){
+// 枠を時計回り順に並べる（中心から見た角度。真上起点・時計回り）
+function clockwiseSlotOrder(placed, W, H){
+  const cx = W / 2, cy = H / 2;
+  return placed.map((p, i)=>{
+    const sx = p.x + p.w / 2;
+    const sy = p.y + p.h / 2;
+    // 0 = 真上、正 = 時計回り
+    const angle = Math.atan2(sx - cx, cy - sy);
+    return {i, angle};
+  }).sort((a, b)=> a.angle - b.angle || a.i - b.i).map(o=> o.i);
+}
+
+// 拡大縮小なし。1px=1px のまま中央基準で枠に収め、はみ出しは外側からカット
+function drawCenterCrop(ctx, im, dx, dy, dw, dh){
+  const iw = im.naturalWidth || im.width;
+  const ih = im.naturalHeight || im.height;
+  const sw = Math.min(iw, dw);
+  const sh = Math.min(ih, dh);
+  const sx = Math.floor((iw - sw) / 2);
+  const sy = Math.floor((ih - sh) / 2);
+  const ddx = dx + Math.floor((dw - sw) / 2);
+  const ddy = dy + Math.floor((dh - sh) / 2);
+  ctx.drawImage(im, sx, sy, sw, sh, ddx, ddy, sw, sh);
+}
+
+// 描画。rot=0 は従来どおり枠に合わせて描く。rot>0 は枠固定のまま中身を時計回りに回し、中央クロップ。
+function drawLayout(c, rot){
   const cv = document.createElement("canvas");
   cv.width = c.W; cv.height = c.H;
   const cx = cv.getContext("2d");
-  cx.imageSmoothingEnabled = true;
-  cx.imageSmoothingQuality = "high";
-  for(const r of c.placed) cx.drawImage(r.src.im, r.x, r.y, r.w, r.h);
+  const placed = c.placed;
+  const n = placed.length;
+  const r = n ? ((rot % n) + n) % n : 0;
+
+  if(!r){
+    cx.imageSmoothingEnabled = true;
+    cx.imageSmoothingQuality = "high";
+    for(const p of placed) cx.drawImage(p.src.im, p.x, p.y, p.w, p.h);
+    return cv;
+  }
+
+  if(!c._order || c._order.length !== n) c._order = clockwiseSlotOrder(placed, c.W, c.H);
+  const order = c._order;
+  const srcs = new Array(n);
+  for(let j=0; j<n; j++){
+    const destIdx = order[j];
+    const srcIdx = order[(j - r + n) % n];
+    srcs[destIdx] = placed[srcIdx].src;
+  }
+  cx.imageSmoothingEnabled = false;
+  for(let i=0; i<n; i++){
+    const p = placed[i];
+    drawCenterCrop(cx, srcs[i].im, p.x, p.y, p.w, p.h);
+  }
   return cv;
 }
 
@@ -291,19 +337,20 @@ $("resultCard").onclick = e=>{
   window.scrollTo(0, 0);
 };
 
-let layouts = [], layoutIdx = 0, merged = null;
+let layouts = [], layoutIdx = 0, slotRot = 0, merged = null;
 
 function merge(){
-  if(S.imgs.length === 0){ $("resultCard").classList.add("hide"); layouts=[]; merged=null; return; }
+  if(S.imgs.length === 0){ $("resultCard").classList.add("hide"); layouts=[]; merged=null; slotRot=0; return; }
   layouts = buildLayouts(S.imgs.map(o=>o.im));
   layoutIdx = 0;
+  slotRot = 0;
   if(!layouts.length){ showErr("mergeErr","この組み合わせは大きすぎて1枚にできませんでした。"); return; }
   showLayout(true);
 }
 
 function showLayout(scrollToImage){
   const c = layouts[layoutIdx];
-  merged = drawLayout(c);
+  merged = drawLayout(c, slotRot);
   const img = $("resultImg");
   if(scrollToImage) img.onload = ()=>{
     const r = $("resultCard").querySelector(".checker").getBoundingClientRect();
@@ -311,17 +358,37 @@ function showLayout(scrollToImage){
   };
   else img.onload = null;
   img.src = merged.toDataURL("image/png");
+  const n = c.placed.length;
+  const rotStep = n ? ((slotRot % n) + n) % n : 0;
   $("resultInfo").textContent =
     `${c.W} × ${c.H} px`
-    + (c.maxScale > 1.01 ? `　／　小さい画像を最大 ${c.maxScale.toFixed(2)} 倍に拡大` : "　／　全て原寸")
+    + (rotStep
+        ? `　／　枠固定・配置ローテ ${rotStep}/${n}（中央クロップ）`
+        : (c.maxScale > 1.01 ? `　／　小さい画像を最大 ${c.maxScale.toFixed(2)} 倍に拡大` : "　／　全て原寸"))
     + (layouts.length > 1 ? `　／　候補 ${layoutIdx+1} / ${layouts.length}` : "");
   $("alt").classList.toggle("hide", layouts.length < 2);
   $("resultCard").classList.remove("hide");
+  img.title = n >= 2 ? "クリックで配置を時計回りに入れ替え（縦横比は維持）" : "";
 }
 
-$("alt").onclick = ()=>{ layoutIdx = (layoutIdx + 1) % layouts.length; showLayout(false); };
-$("dl").onclick  = ()=> merged && saveCanvas(merged, "merged");
+function rotateSlots(){
+  if(!layouts.length) return;
+  const n = layouts[layoutIdx].placed.length;
+  if(n < 2) return;
+  slotRot++;
+  showLayout(false);
+}
 
+$("alt").onclick = e=>{ e.stopPropagation(); layoutIdx = (layoutIdx + 1) % layouts.length; slotRot = 0; showLayout(false); };
+$("dl").onclick  = e=>{ e.stopPropagation(); merged && saveCanvas(merged, "merged"); };
+
+// 完成画像クリック → 枠の形はそのまま、中身だけ時計回り
+$("resultImg").onclick = e=>{ e.stopPropagation(); rotateSlots(); };
+$("resultCard").querySelector(".checker").onclick = e=>{
+  if(e.target.id === "resultImg") return; // img 側で処理済み
+  e.stopPropagation();
+  rotateSlots();
+};
 function showErr(id, msg){ const e=$(id); e.textContent=msg; e.classList.remove("hide"); }
 
 </script>
